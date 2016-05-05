@@ -45,9 +45,37 @@ case "$mode" in
     weave status || weave launch
     ## Currently Weave Net doesn't persist DNS records
     weave expose -h "${hostname}.weave.local"
-    # if ! check_docker_for_mac ; then
-      # eval "$(weave env)"
-    # fi
+    if ! check_docker_for_mac ; then
+      eval "$(weave env)"
+    fi
+    docker run \
+      --volume="/:/rootfs" \
+      --volume="/var/run/weave/weave.sock:/docker.sock" \
+        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+          setup-single-node
+    #
+    docker run \
+      --volume="/var/run/weave/weave.sock:/docker.sock" \
+        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+          compose -p kube up -d
+    # Create "kube-system" namespace
+    docker run \
+      --net=weave \
+      --dns=172.17.0.1 \
+      --volumes-from=kube-toolbox-pki weaveworks/kubernetes-anywhere:toolbox-${version} \
+      kubectl create -f kube-system-namespace.yaml
+    # Create DNS
+    docker run --net=weave --dns=172.17.0.1 \
+      --volumes-from=kube-toolbox-pki weaveworks/kubernetes-anywhere:toolbox-${version} \
+      kubectl create -f skydns-addon-secure-v1.2
+  ;;
+  start)
+    weave status || weave launch
+    ## Currently Weave Net doesn't persist DNS records
+    weave expose -h "${hostname}.weave.local"
+    if ! check_docker_for_mac ; then
+      eval "$(weave env)"
+    fi
     docker run \
       --volume="/:/rootfs" \
       --volume="/var/run/weave/weave.sock:/docker.sock" \
@@ -64,7 +92,7 @@ case "$mode" in
       --volume="/:/rootfs" \
       --volume="/var/run/docker.sock:/docker.sock" \
         "weaveworks/kubernetes-anywhere:toolbox-${version}" \
-          compose -p kube down
+          compose -p kube down || true
     docker run \
       --volume="/:/rootfs" \
       --volume="/var/run/docker.sock:/docker.sock" \
@@ -77,6 +105,7 @@ case "$mode" in
       --volume="/var/run/docker.sock:/docker.sock" \
         "weaveworks/kubernetes-anywhere:toolbox-${version}" \
           compose -p kube down
+    weave stop
   ;;
   stop)
     docker run \
