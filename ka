@@ -25,7 +25,7 @@ check_docker_for_mac() {
 
 check_docker_local() {
   [ -S /var/run/docker.sock ] \
-    && docker --host="unix:///var/run/docker.sock" info
+    && docker --host="unix:///var/run/docker.sock" info &> /dev/null
   ## TODO: figure out if sudo is needed
 }
 
@@ -86,6 +86,6 @@ case "$mode" in
           compose -p kube stop
   ;;
   *)
-    echo "$0 [up|stop|down|reset]"
+    print_usage
   ;;
 esac
