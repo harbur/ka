@@ -1,0 +1,91 @@
+#!/bin/bash
+
+set -o errexit
+set -o pipefail
+
+function print_usage {
+    cat << EOF
+ka is a utility for launching Kubernetes Anywhere
+
+Usage: ka [command]
+
+Available commands:
+  up       Starts Kubernetes in the Docker host currently configured with your local docker command
+  stop     Stops a previously started Kubernetes cluster keeping cluster info
+  down     Tear down a previously started Kubernetes cluster deleting permanently cluster info
+  restart  Restart Kubernetes
+EOF
+}
+
+check_docker_for_mac() {
+  local -r docker_for_mac_version="${HOME}/Library/Containers/com.docker.docker/Data/database/com.docker.driver.amd64-linux/schema-version"
+  [ "$(uname)" = "Darwin" ] \
+    && [ -f "${docker_for_mac_version}" ]
+}
+
+check_docker_local() {
+  [ -S /var/run/docker.sock ] \
+    && docker --host="unix:///var/run/docker.sock" info
+  ## TODO: figure out if sudo is needed
+}
+
+if check_docker_local && check_docker_for_mac ; then
+  hostname="docker"
+elif check_docker_local ; then
+  hostname="$(hostname)"
+else
+  exit 1
+fi
+
+mode=$1
+version="${2:-v1.2}"
+
+case "$mode" in
+  up)
+    weave status || weave launch
+    ## Currently Weave Net doesn't persist DNS records
+    weave expose -h "${hostname}.weave.local"
+    # if ! check_docker_for_mac ; then
+      # eval "$(weave env)"
+    # fi
+    docker run \
+      --volume="/:/rootfs" \
+      --volume="/var/run/weave/weave.sock:/docker.sock" \
+        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+          setup-single-node
+    #
+    docker run \
+      --volume="/var/run/weave/weave.sock:/docker.sock" \
+        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+          compose -p kube up -d
+  ;;
+  reset)
+    docker run \
+      --volume="/:/rootfs" \
+      --volume="/var/run/docker.sock:/docker.sock" \
+        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+          compose -p kube down
+    docker run \
+      --volume="/:/rootfs" \
+      --volume="/var/run/docker.sock:/docker.sock" \
+        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+          reset-single-node
+  ;;
+  down)
+    docker run \
+      --volume="/:/rootfs" \
+      --volume="/var/run/docker.sock:/docker.sock" \
+        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+          compose -p kube down
+  ;;
+  stop)
+    docker run \
+      --volume="/:/rootfs" \
+      --volume="/var/run/docker.sock:/docker.sock" \
+        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+          compose -p kube stop
+  ;;
+  *)
+    echo "$0 [up|stop|down|reset]"
+  ;;
+esac
