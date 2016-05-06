@@ -29,6 +29,15 @@ check_docker_local() {
   ## TODO: figure out if sudo is needed
 }
 
+start_srelay() {
+  stop_srelay
+  docker run --net=weave --name ka_srelay -d -p 1080:1080 harbur/srelay:20150703-9461835
+}
+
+stop_srelay() {
+  docker rm -f ka_srelay 2> /dev/null || true
+}
+
 if check_docker_local && check_docker_for_mac ; then
   hostname="docker"
 elif check_docker_local ; then
@@ -58,16 +67,12 @@ case "$mode" in
       --volume="/var/run/weave/weave.sock:/docker.sock" \
         "weaveworks/kubernetes-anywhere:toolbox-${version}" \
           compose -p kube up -d
-    # Create "kube-system" namespace
-    docker run \
-      --net=weave \
-      --dns=172.17.0.1 \
-      --volumes-from=kube-toolbox-pki weaveworks/kubernetes-anywhere:toolbox-${version} \
-      kubectl create -f kube-system-namespace.yaml
     # Create DNS
     docker run --net=weave --dns=172.17.0.1 \
       --volumes-from=kube-toolbox-pki weaveworks/kubernetes-anywhere:toolbox-${version} \
-      kubectl create -f skydns-addon-secure-v1.2
+      kubectl create -f addons-v1.2.yaml || true
+    # Start SOCKS relay to get Pod & Services connectivity
+    start_srelay
   ;;
   start)
     weave status || weave launch
@@ -86,6 +91,8 @@ case "$mode" in
       --volume="/var/run/weave/weave.sock:/docker.sock" \
         "weaveworks/kubernetes-anywhere:toolbox-${version}" \
           compose -p kube up -d
+    # Start SOCKS relay to get Pod & Services connectivity
+    start_srelay
   ;;
   reset)
     docker run \
