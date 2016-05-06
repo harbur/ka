@@ -113,6 +113,7 @@ case "$mode" in
         "weaveworks/kubernetes-anywhere:toolbox-${version}" \
           compose -p kube down
     weave stop
+    stop_srelay
   ;;
   stop)
     docker run \
@@ -120,6 +121,7 @@ case "$mode" in
       --volume="/var/run/docker.sock:/docker.sock" \
         "weaveworks/kubernetes-anywhere:toolbox-${version}" \
           compose -p kube stop
+    stop_srelay
   ;;
   *)
     print_usage
