@@ -14,6 +14,8 @@ Kubernetes master is running at http://localhost:8080
 KubeDNS is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/kube-dns
 ```
 
+[![asciicast](https://asciinema.org/a/cyky9510bn4ej9z3xwuvxrk8o.png)](https://asciinema.org/a/cyky9510bn4ej9z3xwuvxrk8o)
+
 It works with `Docker for Mac` and is blazzing fast.
 
 This script automates the process described [here](https://github.com/weaveworks/kubernetes-anywhere/blob/master/DOCKER_FOR_MAC.md)
