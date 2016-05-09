@@ -13,6 +13,9 @@ Available commands:
   stop     Stops a previously started Kubernetes cluster keeping cluster info
   down     Tear down a previously started Kubernetes cluster deleting permanently cluster info
   restart  Restart Kubernetes
+
+Environment variables:
+  DEBUG    Activates debug information.
 EOF
 }
 
@@ -92,8 +95,7 @@ weave::stop() {
   if [ $? == 1 ]; then
     echo $skip
   else
-    weave stop
-    echo $pass
+    weave stop && echo $pass || echo $fail
   fi
 }
 
