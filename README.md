@@ -3,12 +3,46 @@
 Launch Kubernetes in Docker in one `ka up` command.
 
 ```
-> ka up
-
+➜  ~ ka up
+Starting Weave Network.... [PASS]
+Starting Kubernetes....... [PASS]
+Setup Kubernetes Addons... [PASS]
+Starting SOCKS proxy...... [PASS]
+Configure Kube client..... [PASS]
+➜  ~ kubectl cluster-info
+Kubernetes master is running at http://localhost:8080
+KubeDNS is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/kube-dns
 ```
+
 It works with `Docker for Mac` and is blazzing fast.
 
 This script automates the process described [here](https://github.com/weaveworks/kubernetes-anywhere/blob/master/DOCKER_FOR_MAC.md)
+
+# Prerequisites
+
+You'll need Docker and Weave Net to bootstrap Kubernetes using this script. This works best using [Docker for Mac](https://blog.docker.com/2016/03/docker-for-mac-windows-beta/).
+
+* [Install Docker](https://www.docker.com/)
+
+* [Install Weave Net](https://www.weave.works/install-weave-net/)
+
+```
+sudo curl -L git.io/weave -o /usr/local/bin/weave
+sudo chmod +x /usr/local/bin/weave
+```
+
+* [Kubectl client](http://kubernetes.io/docs/getting-started-guides/binary_release/)
+
+```
+brew install kubernetes-cli
+```
+
+# Process
+
+The script will check and launch Weave Net for you, Kubernetes as a single-node, Add `kube-system` namespace and DNS Addon, launch a SOCKS 
+proxy to get Pod and Service IPs connectivity and configure your kubectl client `kubernetes-anywhere` context and set it as default.
+
+After launching the script you simply use the `kubectl` to manage your cluster from your machine.
 
 # Configure Proxy
 
