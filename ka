@@ -1,6 +1,5 @@
 #!/bin/bash
 
-set -o errexit
 set -o pipefail
 
 function print_usage {
@@ -17,6 +16,21 @@ Available commands:
 EOF
 }
 
+# Text color variables
+txtund=$(tput sgr 0 1)          # Underline
+txtbld=$(tput bold)             # Bold
+bldred=${txtbld}$(tput setaf 1) #  red
+bldblu=${txtbld}$(tput setaf 4) #  blue
+bldyel=${txtbld}$(tput setaf 3) #  yellow
+bldgre=${txtbld}$(tput setaf 2) #  green
+bldwht=${txtbld}$(tput setaf 7) #  white
+txtrst=$(tput sgr0)             # Reset
+
+pass="${bldgre}[PASS]${txtrst}"
+skip="${bldblu}[SKIP]${txtrst}"
+warn="${bldyel}[WARN]${txtrst}"
+fail="${bldred}[FAIL]${txtrst}"
+
 check_docker_for_mac() {
   local -r docker_for_mac_version="${HOME}/Library/Containers/com.docker.docker/Data/database/com.docker.driver.amd64-linux/schema-version"
   [ "$(uname)" = "Darwin" ] \
@@ -29,13 +43,17 @@ check_docker_local() {
   ## TODO: figure out if sudo is needed
 }
 
-start_srelay() {
-  stop_srelay
-  docker run --net=weave --name ka_srelay -d -p 1080:1080 harbur/srelay:20150703-9461835
+socks::start() {
+  echo -n "Starting SOCKS proxy...... "
+  docker rm -f socks &> /dev/null || true
+  docker run --net=weave --name socks -d -p 1080:1080 harbur/srelay:20150703-9461835 &> /dev/$output
+  echo $pass
 }
 
-stop_srelay() {
-  docker rm -f ka_srelay 2> /dev/null || true
+socks::stop() {
+  echo -n "Stopping SOCKS proxy...... "
+  docker rm -f socks &> /dev/null || true
+  echo $pass
 }
 
 if check_docker_local && check_docker_for_mac ; then
@@ -49,79 +67,142 @@ fi
 mode=$1
 version="${2:-v1.2}"
 
+# use DEBUG variable to activate output logs
+if [ ! -z $DEBUG ]; then
+  output=stdout;
+else
+  output=null;
+fi
+
+weave::start() {
+  echo -n "Starting Weave Network.... "
+  weave status &>/dev/$output
+  if [ $? == 0 ]; then
+    echo $skip
+  else
+    weave launch &>/dev/$output
+    weave expose -h "${hostname}.weave.local" &> /dev/$output
+    echo $pass
+  fi
+}
+
+weave::stop() {
+  echo -n "Stopping Weave Network.... "
+  weave status &>/dev/$output
+  if [ $? == 1 ]; then
+    echo $skip
+  else
+    weave stop
+    echo $pass
+  fi
+}
+
+docker::config() {
+  if ! check_docker_for_mac ; then
+   eval "$(weave env)"
+  fi
+}
+
+kubernetes::start() {
+  echo -n "Starting Kubernetes....... "
+  docker run \
+  --volume="/:/rootfs" \
+  --volume="/var/run/weave/weave.sock:/docker.sock" \
+    "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+      setup-single-node &> /dev/$output
+  docker run \
+    --volume="/var/run/weave/weave.sock:/docker.sock" \
+      "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+        compose -p kube up -d &> /dev/$output
+  echo $pass
+}
+
+kubernetes::stop() {
+  echo -n "Stopping Kubernetes....... "
+  docker run \
+  --volume="/:/rootfs" \
+  --volume="/var/run/docker.sock:/docker.sock" \
+    "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+      compose -p kube down &> /dev/$output || true
+  echo $pass
+}
+
+kubernetes::reset() {
+  echo -n "Reseting Kubernetes....... "
+  docker run \
+  --volume="/:/rootfs" \
+  --volume="/var/run/docker.sock:/docker.sock" \
+    "weaveworks/kubernetes-anywhere:toolbox-${version}" \
+      reset-single-node &> /dev/$output
+  echo $pass
+}
+
+kubernetes::addons() {
+  echo -n "Setup Kubernetes Addons... "
+  docker run --net=weave --dns=172.17.0.1 \
+    --volumes-from=kube-toolbox-pki weaveworks/kubernetes-anywhere:toolbox-${version} \
+    kubectl create -f addons-v1.2.yaml &> /dev/$output || true
+  echo $pass
+}
+
+kubernetes::config() {
+  echo -n "Configure Kube client..... "
+  kubectl config set-cluster local-cluster --server=http://localhost:8080 &> /dev/$output
+  kubectl config set-context kubernetes-anywhere --cluster=local-cluster &> /dev/$output
+  kubectl config use-context kubernetes-anywhere &> /dev/$output
+  echo $pass
+}
+
 case "$mode" in
   up)
-    weave status || weave launch
-    ## Currently Weave Net doesn't persist DNS records
-    weave expose -h "${hostname}.weave.local"
-    if ! check_docker_for_mac ; then
-      eval "$(weave env)"
-    fi
-    docker run \
-      --volume="/:/rootfs" \
-      --volume="/var/run/weave/weave.sock:/docker.sock" \
-        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
-          setup-single-node
-    #
-    docker run \
-      --volume="/var/run/weave/weave.sock:/docker.sock" \
-        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
-          compose -p kube up -d
-    # Create DNS
-    docker run --net=weave --dns=172.17.0.1 \
-      --volumes-from=kube-toolbox-pki weaveworks/kubernetes-anywhere:toolbox-${version} \
-      kubectl create -f addons-v1.2.yaml || true
-    # Start SOCKS relay to get Pod & Services connectivity
-    start_srelay
+    weave::start
+    docker::config
+    kubernetes::start
+    kubernetes::addons
+    socks::start
+    kubernetes::config
   ;;
   start)
-    weave status || weave launch
-    ## Currently Weave Net doesn't persist DNS records
-    weave expose -h "${hostname}.weave.local"
-    if ! check_docker_for_mac ; then
-      eval "$(weave env)"
-    fi
-    docker run \
-      --volume="/:/rootfs" \
-      --volume="/var/run/weave/weave.sock:/docker.sock" \
-        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
-          setup-single-node
-    #
-    docker run \
-      --volume="/var/run/weave/weave.sock:/docker.sock" \
-        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
-          compose -p kube up -d
-    # Start SOCKS relay to get Pod & Services connectivity
-    start_srelay
+    weave::start
+    docker::config
+    kubernetes::start
+    socks::start
+    kubernetes::config
   ;;
   reset)
-    docker run \
-      --volume="/:/rootfs" \
-      --volume="/var/run/docker.sock:/docker.sock" \
-        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
-          compose -p kube down || true
-    docker run \
-      --volume="/:/rootfs" \
-      --volume="/var/run/docker.sock:/docker.sock" \
-        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
-          reset-single-node
+    kubernetes::stop
+    kubernetes::reset
   ;;
   down)
-    docker run \
-      --volume="/:/rootfs" \
-      --volume="/var/run/docker.sock:/docker.sock" \
-        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
-          compose -p kube down
-    weave stop
-    stop_srelay
+    kubernetes::stop
+    weave::stop
+    socks::stop
   ;;
   stop)
-    docker run \
-      --volume="/:/rootfs" \
-      --volume="/var/run/docker.sock:/docker.sock" \
-        "weaveworks/kubernetes-anywhere:toolbox-${version}" \
-          compose -p kube stop
-    stop_srelay
+    kubernetes::stop
+    socks::stop
+  ;;
+  # Exposing Functions
+  weave::start)
+    weave::start
+  ;;
+  weave::stop)
+    weave::stop
+  ;;
+  kubernetes::start)
+    kubernetes::start
+  ;;
+  kubernetes::stop)
+    kubernetes::stop
+  ;;
+  kubernetes::reset)
+    kubernetes::reset
+  ;;
+  socks::start)
+    socks::start
+  ;;
+  socks::stop)
+    socks::stop
   ;;
   *)
     print_usage
