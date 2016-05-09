@@ -175,8 +175,8 @@ case "$mode" in
   ;;
   down)
     kubernetes::stop
-    weave::stop
     socks::stop
+    weave::stop
   ;;
   stop)
     kubernetes::stop
