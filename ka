@@ -60,7 +60,7 @@ socks::stop() {
 }
 
 if check_docker_local && check_docker_for_mac ; then
-  hostname="docker"
+  hostname="moby"
 elif check_docker_local ; then
   hostname="$(hostname)"
 else
